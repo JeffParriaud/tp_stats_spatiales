@@ -136,9 +136,12 @@ plot(metro_sf["DENSITE_cat"],border=FALSE,pal=pal1)
 
 
 
-############################
+
+
+
+########################################################################
 # Exercice 2
-############################
+########################################################################
 
 # Question 1
 tx_pauvrete <- readxl::read_xlsx("Donnees/Taux_pauvrete_2018.xlsx")
@@ -254,3 +257,20 @@ dev.off() # Répéter jusqu'à affichage d'une erreur
 
 # Question 3
 st_write(dep_sf,"dept_tx_pauvrete_2018.gpkg")
+
+
+
+
+
+
+
+########################################################################
+# Exercice 3
+########################################################################
+
+# Question 1
+dep_sf <- st_read("Fonds_carte/France_metro/reg_francemetro_2021.shp", 
+                  options = "ENCODING=WINDOWS-1252"
+) 
+tx_pauvrete <- readxl::read_xlsx("Donnees/Taux_pauvrete_2018.xlsx")
+tx_pauvrete <-tx_pauvrete[1:96,]
