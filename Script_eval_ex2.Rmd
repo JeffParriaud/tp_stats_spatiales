@@ -9,25 +9,6 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
 
 ```{r}
 # Chargement des packages
@@ -90,7 +71,7 @@ D'abord le résumé:
 summary(data$taux_men_pauv)
 ```
 
-Puis la boite à moustaches. On peut constater que de nombreuses valeurs se situent sur un intervalle restreint (0.124,0.135) et qu'ensuite la queue de la distribution est très étendue.
+Puis la boite à moustaches. On peut constater que la queue de la distribution est très étendue.
 ```{r}
 boxplot(data$taux_men_pauv)
 ```
@@ -150,7 +131,7 @@ ponderation <- nb2listw(voisins, zero.policy = TRUE)
 
 ## Diagramme de Moran
 
-On crée une variable centrée et réduite pour le taux de ménages pauvres.
+On crée une variable centrée et réduite pour le taux de ménages pauvres. L'histogramme permet de bien visualiser l'étendue de la queue de la distribution.
 ```{r}
 data2 <- data2 %>%
   mutate(taux_men_pauv_std = scale(taux_men_pauv))
@@ -175,7 +156,7 @@ moran.plot(
 
 ## Calcul de l'indice de Moran
 
-On calcule l'indice de Moran pour estimer la significativité de l'auto-corrélation. L'hypothèse nulle (absence d'auto-corrélation) est nettement rejetée.
+On calcule l'indice de Moran pour estimer la significativité de l'auto-corrélation. L'hypothèse nulle (absence d'auto-corrélation) est nettement rejetée. L'autocorrélation positive observée précédemment est significative.
 
 ```{r}
 moran.test(data2$taux_men_pauv_std, ponderation, randomisation = TRUE)
@@ -188,7 +169,7 @@ Précédemment le nombre de voisins pour chaque carreau était déterminé avec 
 voisins2 <- data2 %>% spdep::poly2nb(queen=FALSE)
 summary(voisins2)
 ```
-Il faut à nouveau enlever les carreaux sans voisin.
+Il faut à nouveau enlever les carreaux sans voisin: ceux qui auparavant n'avaient de voisin qu'en diagonale.
 ```{r}
 j<-1
 list_avec_voisins <- rep(0,dim(data2)[1]-6)
@@ -235,13 +216,14 @@ data2 <- cbind(data2,LISA)%>%
 plot(data2["LISA"],breaks='jenks',border=FALSE,main="Indicateurs d'autocorrélation locaux")
 ```
 
-Nous allons maintenant visualiser les pvaleurs des indices d'autocorrélation locaux. Nous pouvons constater les zones avec autocorrélation positive mentionnées précédemment correspondent toutes à des faibles pvaleurs, ce qui signifie que l'autocorrélation est significative. 
+Nous allons maintenant visualiser les pvaleurs des indices d'autocorrélation locaux. Nous pouvons constater que les zones avec autocorrélation positive mentionnées précédemment correspondent toutes à des faibles pvaleurs, ce qui signifie que l'autocorrélation est significative. 
 ```{r}
 LISA<-data.frame(lyon_rev_lisa[,5])
 data2 <- cbind(data2,LISA)%>%
   rename("LISA_PVAL"="lyon_rev_lisa...5.")
 plot(data2["LISA_PVAL"],breaks=c(0,0.01,0.05,0.1,1),border=FALSE,main="pvaleurs des indicateurs d'autocorrélation locaux")
 ```
+
 # Conclusion
 Les zones significatives sont toutes des zones avec autocorrélation positive, ce qui accrédite l'hypothèse de quartiers pauvres et quartiers riches.
 Les quartiers pauvres se situent au Nord-Ouest et au Sud-Est. Les quartiers riches se situent au Nord-Est, au Centre-Est et au Sud-Ouest.
