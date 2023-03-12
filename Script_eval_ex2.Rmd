@@ -1,0 +1,162 @@
+---
+title: "Script_eval_ex2"
+author: "Jean-François Parriaud"
+date: "2023-03-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+# Chargement des packages
+library(dplyr)
+library(sf)
+library(spdep)
+library(RColorBrewer)
+
+```
+
+# Exercice 1 TP6:
+
+## Question 1:
+Les données carroyées sont sous la forme d'un géopackage, elles sont lues via l'instruction st_read.
+Le nombre de ménages pauvres est contenu dans la variable Men_pauv, le nombre de ménages dans la variable Men. Le taux de ménages pauvres est obtenu en effectuant le quotient de la première par la deuxième, et ajouté dans le fichier de données avec la fonction transform.
+```{r}
+# Import des données carroyées
+data<-st_read("./data/lyon.gpkg")
+
+# Ajout de la part de ménages pauvres
+data <- data %>%
+  transform(taux_men_pauv = Men_pauv/Men)
+
+```
+
+## Question 2:
+On commence par charger le fonds de commune. 
+Celui-ci utilise le système de projection WGS 84, on passe en Lambert 93 par la commande st_transform.
+Enfin on sélectionne la ville qui nous intéresse, Lyon, à l'aide de son code postal.
+La superposition des données carroyées et du fonds de la commune permet de constater que les carreaux dépassent les frontières communales. Si les carreaux avaient été limités aux frontières communales, on aurait couru le risque d'avoir des carreaux en bordure ne contenant que très peu de données, et par conséquent sujets à de fortes fluctuations statistiques. Pour des grandes villes, on peut raisonnablement émettre une hypothèse de continuum, i.e. qu'il n'y a pas de différence notable de part et d'autre de la frontière entre les deux communes.
+D'autre part, certains carreaux semblent se situer entièrement en dehors des frontières communales. C'est probablement dû au fait que la géométrie utilisée pour notre fonds de commune est ici simpliste. Avec une géométrie plus fine, ces carreaux auraient eu une petite partie commune avec la ville.
+
+```{r}
+# Import du fonds de commune
+france<-st_read("./fonds/commune_franceentiere_2021.shp")
+
+# Changement du sustème de projection
+france <- france %>%
+  st_transform(2154)
+st_crs(france)
+
+# Sélection de la ville de Lyon
+lyon<-france %>% 
+  filter(code=="69123")
+# Nettoyage: le fichier france ne nous sert plus, autant l'enlever de la mémoire
+rm(france)
+
+# On superpose les données carroyées au fonds de la commune. 
+library(ggplot2)
+ggplot() +
+  geom_sf(data = lyon)+
+  geom_sf(data = data["taux_men_pauv"]) +
+  theme_void()
+```
+
+## Question 3:
+On affiche les statistiques du taux de ménages pauvres.
+```{r}
+summary(data$taux_men_pauv)
+boxplot(data$taux_men_pauv)
+
+```
+
+On effectue une représentation spatiale des données sur le taux de ménages pauvres, pour voir s'il y a lieu de suspecter uné éventuelle corrélation spatiale. Dans le cas présent, on observe des regroupements de couleurs vives, associées à un taux plus élevé de ménages pauvres, et des regroupements de couleurs froides, associées à un faible taux de ménages pauvres. Il y a probablement corrélation spatiale positive.
+```{r}
+plot(data["taux_men_pauv"],breaks='jenks',border=FALSE)
+```
+
+
+### 
+On crée la liste des voisins de chaque carreau. Détail surprenant: un carreau ne devrait pas avoir plus de 8 voisins, mais on monte ici à 15! Après comparaison des données, il semble que 133 carreaux aient été dupliqués: le 115 et le 813 contiennent exactement les mêmes données et se superposent sur la carte.
+```{r}
+voisins <- data %>% spdep::poly2nb()
+summary(voisins)
+data2 <- distinct(data)
+voisins2 <- data2 %>% spdep::poly2nb()
+summary(voisins2)
+doublons<-data[which(duplicated(data)),]
+ggplot() +
+  geom_sf(data = lyon)+
+  geom_sf(data = doublons["taux_men_pauv"]) +
+  theme_void()
+```
+
+### Sous-question 6.c:
+
+```{r}
+voisins[[4]]
+```
+
+Le quatrième iris de la liste a quatre voisins.
+
+## Question 7:
+
+
+On crée une liste de poids à partir de la liste de voisins.
+```{r}
+ponderation <- nb2listw(voisins, zero.policy = TRUE)
+```
+
+## Question 8:
+
+```{r}
+marseille <- marseille %>%
+  mutate(DISP_MED18_STD = scale(DISP_MED18))
+```
+
+
+```{r}
+moran.plot(
+  as.numeric(marseille$DISP_MED18_STD),
+  listw = ponderation,
+  xlab = "Revenus disponibles médians par Iris",
+  ylab = "Moyenne des revenus des voisins",
+  main = "Diagramme de Moran"
+)
+```
+
+On remarque bien une auto-corrélation positive sur le diagramme.
+
+## Question 9:
+
+On calcule l'indice de Moran pour estimer la significativité de l'auto-corrélation:
+
+```{r}
+moran.test(marseille$DISP_MED18_STD, ponderation, randomisation = TRUE)
+```
+
+L'hypothèse nulle (absence d'auto-corrélation) est rejetée.
+
+## Question 10:
+
