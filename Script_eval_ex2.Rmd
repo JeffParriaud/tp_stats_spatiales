@@ -79,84 +79,197 @@ rm(france)
 library(ggplot2)
 ggplot() +
   geom_sf(data = lyon)+
-  geom_sf(data = data["taux_men_pauv"]) +
+  geom_sf(data = data["taux_men_pauv"],color="red") +
   theme_void()
 ```
 
 ## Question 3:
 On affiche les statistiques du taux de ménages pauvres.
+D'abord le résumé:
 ```{r}
 summary(data$taux_men_pauv)
-boxplot(data$taux_men_pauv)
+```
 
+Puis la boite à moustaches. On peut constater que de nombreuses valeurs se situent sur un intervalle restreint (0.124,0.135) et qu'ensuite la queue de la distribution est très étendue.
+```{r}
+boxplot(data$taux_men_pauv)
 ```
 
 On effectue une représentation spatiale des données sur le taux de ménages pauvres, pour voir s'il y a lieu de suspecter uné éventuelle corrélation spatiale. Dans le cas présent, on observe des regroupements de couleurs vives, associées à un taux plus élevé de ménages pauvres, et des regroupements de couleurs froides, associées à un faible taux de ménages pauvres. Il y a probablement corrélation spatiale positive.
 ```{r}
-plot(data["taux_men_pauv"],breaks='jenks',border=FALSE)
+plot(data["taux_men_pauv"],breaks='jenks',border=FALSE,main="Taux de ménages pauvres")
 ```
 
 
-### 
-On crée la liste des voisins de chaque carreau. Détail surprenant: un carreau ne devrait pas avoir plus de 8 voisins, mais on monte ici à 15! Après comparaison des données, il semble que 133 carreaux aient été dupliqués: le 115 et le 813 contiennent exactement les mêmes données et se superposent sur la carte.
+### Création de la liste des voisins
+On crée la liste des voisins de chaque carreau. Détail surprenant: un carreau ne devrait pas avoir plus de 8 voisins, mais on monte ici à 15! 
 ```{r}
 voisins <- data %>% spdep::poly2nb()
 summary(voisins)
+# Quelque chose cloche dans le nombre de voisins: doublons
+```
+Les 6 carreaux sans voisins posent problème lors du tracé du diagramme de Moran et lors du calcul de l'indice de Moran. Nous allons devoir les enlever des données.
+```{r}
+j<-1
+list_avec_voisins <- rep(0,dim(data)[1]-6)
+for (i in 1:dim(data)[1]){
+  if (voisins[[i]][1]!=0) {
+    list_avec_voisins[j]<-i
+    j<-j+1
+  }
+}
+data<-data[list_avec_voisins,]
+```
+
+Après comparaison des données, il semble que des carreaux aient été dupliqués: par exemple, le 115 et le 813 contiennent exactement les mêmes données et se superposent sur la carte. Le fichier de données est débarrassé des doublons avec la commande distinct. 
+```{r}
 data2 <- distinct(data)
-voisins2 <- data2 %>% spdep::poly2nb()
-summary(voisins2)
+voisins <- data2 %>% spdep::poly2nb()
+summary(voisins)
+# Là c'est cohérent!
+```
+
+La répartition de ces doublons sur la représentation spatiale ressemble peu à un processus aléatoire. Ce sont 133 carreaux, correspondant à 28783 ménages, qui apparaissent dans ces doublons, sur un total de 239568.
+```{r}
 doublons<-data[which(duplicated(data)),]
+men_doublons <- sum(doublons$Men)
 ggplot() +
   geom_sf(data = lyon)+
-  geom_sf(data = doublons["taux_men_pauv"]) +
+  geom_sf(data = doublons["taux_men_pauv"],color="red") +
   theme_void()
+# La répartition des doublons semble suivre des lignes...
 ```
 
-### Sous-question 6.c:
 
-```{r}
-voisins[[4]]
-```
-
-Le quatrième iris de la liste a quatre voisins.
-
-## Question 7:
-
+## Création des poids
 
 On crée une liste de poids à partir de la liste de voisins.
 ```{r}
 ponderation <- nb2listw(voisins, zero.policy = TRUE)
 ```
 
-## Question 8:
+## Diagramme de Moran
 
+On crée une variable centrée et réduite pour le taux de ménages pauvres.
 ```{r}
-marseille <- marseille %>%
-  mutate(DISP_MED18_STD = scale(DISP_MED18))
+data2 <- data2 %>%
+  mutate(taux_men_pauv_std = scale(taux_men_pauv))
+test1<-mean(data2$taux_men_pauv_std)   # valeur très faible  -> bien centrée
+test2<-sd(data2$taux_men_pauv_std)     # égal à 1   --> bien réduite
+hist(data2$taux_men_pauv_std,main="Distribution du taux de ménages pauvres",
+     xlab="Taux de ménages pauvres")
 ```
 
-
+On trace le diagramme de Moran. On remarque bien une auto-corrélation positive sur le diagramme.
 ```{r}
 moran.plot(
-  as.numeric(marseille$DISP_MED18_STD),
+  as.numeric(data2$taux_men_pauv_std),
   listw = ponderation,
-  xlab = "Revenus disponibles médians par Iris",
-  ylab = "Moyenne des revenus des voisins",
+  xlab = "taux de ménages pauvres par carreau",
+  ylab = "Moyenne des taux de ménages pauvres des voisins",
   main = "Diagramme de Moran"
 )
 ```
 
-On remarque bien une auto-corrélation positive sur le diagramme.
 
-## Question 9:
 
-On calcule l'indice de Moran pour estimer la significativité de l'auto-corrélation:
+## Calcul de l'indice de Moran
+
+On calcule l'indice de Moran pour estimer la significativité de l'auto-corrélation. L'hypothèse nulle (absence d'auto-corrélation) est nettement rejetée.
 
 ```{r}
-moran.test(marseille$DISP_MED18_STD, ponderation, randomisation = TRUE)
+moran.test(data2$taux_men_pauv_std, ponderation, randomisation = TRUE)
 ```
 
-L'hypothèse nulle (absence d'auto-corrélation) est rejetée.
 
-## Question 10:
+## Effet du type de voisinage
+Précédemment le nombre de voisins pour chaque carreau était déterminé avec l'option par défaut: queen = TRUE, pour laquelle le nombre de voisins maximal était de 8. Nous allons maintenant le calculer en désactivant cette option.
+```{r}
+voisins2 <- data2 %>% spdep::poly2nb(queen=FALSE)
+summary(voisins2)
+```
+Il faut à nouveau enlever les carreaux sans voisin.
+```{r}
+j<-1
+list_avec_voisins <- rep(0,dim(data2)[1]-6)
+for (i in 1:dim(data2)[1]){
+  if (voisins2[[i]][1]!=0) {
+    list_avec_voisins[j]<-i
+    j<-j+1
+  }
+}
+data_king<-data2[list_avec_voisins,]
+voisins2 <- data_king %>% spdep::poly2nb(queen=FALSE)
+summary(voisins2)
+```
+
+Cette nouvelle définition du voisinage donne lieu à un nouveau diagramme de Moran, assez semblable au premier.
+```{r}
+ponderation2 <- nb2listw(voisins2, zero.policy = TRUE)
+moran.plot(
+  as.vector(data_king$taux_men_pauv_std),
+  listw = ponderation2,
+  xlab = "taux de ménages pauvres par carreau",
+  ylab = "Moyenne des taux de ménages pauvres des voisins",
+  main = "Diagramme de Moran"
+)
+```
+
+Nous pouvons aussi réeffectuer le calcul de l'indice de Moran avec cette option désactivée. La nouvelle valeur reste nettement significative: quelle que soit la définition du voisinage, on constate une corrélation spatiale positive.
+```{r}
+moran.test(data_king$taux_men_pauv_std, ponderation2, randomisation = TRUE)
+```
+
+# Indicateurs d'autocorrélation locaux (LISA)
+ Commençons par calculer les LISA. On peut constater que la moyenne des indicateurs Ii est positive, conformément à la corrélation positive observée avec l'indice global.
+```{r}
+lyon_rev_lisa <- as.vector(data2$taux_men_pauv_std) %>% spdep::localmoran(listw=ponderation)
+summary(lyon_rev_lisa)
+```
+ 
+Le graphique permet d'apercevoir quelques zones relativement restreintes avec de forts taux d'autocorrélation (Nord et Sud-Est), des zones assez étendues avec une autocorrélation positive mais plus faible(Ouest, Nord-Est et Sud-Est) mais pour l'essentiel l'autocorrélation spatiale semble faible sur la majorité du territoire.
+```{r}
+LISA<-data.frame(lyon_rev_lisa[,1])
+data2 <- cbind(data2,LISA)%>%
+  rename("LISA"="lyon_rev_lisa...1.")
+plot(data2["LISA"],breaks='jenks',border=FALSE,main="Indicateurs d'autocorrélation locaux")
+```
+
+Nous allons maintenant visualiser les pvaleurs des indices d'autocorrélation locaux. Nous pouvons constater les zones avec autocorrélation positive mentionnées précédemment correspondent toutes à des faibles pvaleurs, ce qui signifie que l'autocorrélation est significative. 
+```{r}
+LISA<-data.frame(lyon_rev_lisa[,5])
+data2 <- cbind(data2,LISA)%>%
+  rename("LISA_PVAL"="lyon_rev_lisa...5.")
+plot(data2["LISA_PVAL"],breaks=c(0,0.01,0.05,0.1,1),border=FALSE,main="pvaleurs des indicateurs d'autocorrélation locaux")
+```
+# Conclusion
+Les zones significatives sont toutes des zones avec autocorrélation positive, ce qui accrédite l'hypothèse de quartiers pauvres et quartiers riches.
+Les quartiers pauvres se situent au Nord-Ouest et au Sud-Est. Les quartiers riches se situent au Nord-Est, au Centre-Est et au Sud-Ouest.
+
+
+
+# Effet du type de voisinage
+Regardons à nouveau ce qui se passe en changeant la définition du voisinage.
+Nous devons dans un premier temps redéfinir les LISA.
+```{r}
+lyon_rev_lisa2 <- as.vector(data_king$taux_men_pauv_std) %>% spdep::localmoran(listw=ponderation2)
+summary(lyon_rev_lisa2)
+```
+Cela nous permet de visualiser ces nouveaux indicateurs locaux. Il n'y pas de différence notable avec l'autre définition du voisinage.
+```{r}
+LISA<-data.frame(lyon_rev_lisa2[,1])
+data2 <- cbind(data_king,LISA)%>%
+  rename("LISA2"="lyon_rev_lisa2...1.")
+plot(data2["LISA2"],breaks='jenks',border=FALSE,main="Indicateurs d'autocorrélation locaux")
+```
+
+On observe moins de zones avec de faibles pvaleurs que précédemment, ce qui était prévisible: la diminution du nombre de voisins entraine une diminution de la précision de la moyenne des voisins (l'écart-type augmente et la significativité diminue).
+La position des zones significatives n'a pas évolué: les zones à forte autocorrélation positive sont significatives.
+
+```{r}
+LISA<-data.frame(lyon_rev_lisa2[,5])
+data2 <- cbind(data_king,LISA)%>%
+  rename("LISA_PVAL2"="lyon_rev_lisa2...5.")
+plot(data2["LISA_PVAL2"],breaks=c(0,0.01,0.05,0.1,1),border=FALSE,main="pvaleurs des indicateurs d'autocorrélation locaux")
+```
 
